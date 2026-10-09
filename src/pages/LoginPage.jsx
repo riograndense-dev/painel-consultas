@@ -7,7 +7,7 @@ import { useAuth } from '../context/auth-context'
 import { DEFAULT_API_URL, getApiBaseUrl, resetApiBaseUrl, setApiBaseUrl } from '../lib/config'
 
 const inputClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:bg-slate-50'
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 focus:outline-none disabled:bg-slate-50'
 const labelClass = 'mb-1.5 block text-sm font-medium text-slate-700'
 const secondaryButton =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-60'
@@ -20,7 +20,7 @@ const BULLETS = [
 
 function BrandPanel() {
   return (
-    <aside className="relative hidden overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-10 text-white lg:flex lg:flex-col lg:justify-between">
+    <aside className="relative hidden overflow-hidden rounded-3xl border border-emerald-800/60 bg-gradient-to-br from-emerald-950 via-green-950 to-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
       <div
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{
@@ -35,18 +35,18 @@ function BrandPanel() {
         </span>
         <h2 className="mt-8 text-3xl leading-tight font-semibold">
           Winthor + iSA API
-          <span className="block text-blue-200">Riograndense</span>
+          <span className="block text-amber-200">Riograndense</span>
         </h2>
-        <p className="mt-4 max-w-sm text-sm leading-relaxed text-blue-100">
+        <p className="mt-4 max-w-sm text-sm leading-relaxed text-emerald-100">
           Portal para consulta da situação cadastral dos clientes na base do ERP WinThor.
         </p>
       </div>
 
-      <ul className="relative mt-10 space-y-3 text-sm text-blue-50">
+      <ul className="relative mt-10 space-y-3 text-sm text-emerald-50">
         {BULLETS.map((item) => (
           <li key={item} className="flex items-start gap-3">
             <svg
-              className="mt-0.5 h-5 w-5 shrink-0 text-blue-200"
+              className="mt-0.5 h-5 w-5 shrink-0 text-amber-200"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
@@ -137,7 +137,7 @@ export function LoginPage() {
       <section className="flex animate-fade-in-up items-center justify-center">
         <div className="w-full max-w-md">
           <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-bold text-white">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200/20 bg-gradient-to-br from-emerald-900 to-slate-900 text-sm font-bold text-amber-200">
               RG
             </span>
             <div className="leading-tight">
@@ -218,7 +218,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-emerald-900 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {submitting ? <Spinner className="h-4 w-4" label="Autenticando" /> : null}
                 {submitting ? 'Autenticando…' : 'Entrar'}

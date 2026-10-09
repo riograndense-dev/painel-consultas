@@ -1,21 +1,45 @@
 import { getApiBaseUrl } from '../lib/config'
 
-/** Erro normalizado da API (status HTTP + mensagem legível). */
+/** Erro normalizado da API (status HTTP + mensagem legível + erros por campo). */
 export class ApiError extends Error {
-  constructor(message, { status = 0, detail = null, cause } = {}) {
+  constructor(message, { status = 0, detail = null, fieldErrors = {}, cause } = {}) {
     super(message, { cause })
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.fieldErrors = fieldErrors
   }
 
   get isUnauthorized() {
     return this.status === 401 || this.status === 403
   }
 
+  get isValidationError() {
+    return this.status === 422 || this.hasFieldErrors
+  }
+
+  get hasFieldErrors() {
+    return Object.keys(this.fieldErrors).length > 0
+  }
+
   get isConnectionError() {
     return this.status === 0
   }
+}
+
+const LOC_PREFIXES = ['body', 'query', 'path', 'header', 'cookie']
+
+/** Converte a lista de ValidationError do FastAPI em { campo: mensagem }. */
+export function fieldErrorsFromDetail(data) {
+  const list = Array.isArray(data) ? data : Array.isArray(data?.detail) ? data.detail : []
+  return list.reduce((acc, item) => {
+    const loc = Array.isArray(item?.loc) ? item.loc : []
+    const campo = [...loc]
+      .reverse()
+      .find((part) => typeof part === 'string' && !LOC_PREFIXES.includes(part))
+    if (campo && !acc[campo]) acc[campo] = item?.msg ?? 'Valor inválido'
+    return acc
+  }, {})
 }
 
 function buildUrl(path, query) {
@@ -104,7 +128,11 @@ export async function apiRequest(path, options = {}) {
   const data = await parseBody(response)
 
   if (!response.ok) {
-    throw new ApiError(extractMessage(data, response), { status: response.status, detail: data })
+    throw new ApiError(extractMessage(data, response), {
+      status: response.status,
+      detail: data,
+      fieldErrors: fieldErrorsFromDetail(data),
+    })
   }
 
   return data

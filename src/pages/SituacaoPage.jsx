@@ -1,388 +1,347 @@
-import { useState } from 'react'
-import { getClientSituacao } from '../api/clients'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown, CircleOff, FileQuestion, List, MapPinned, PackageOpen, Search, ShoppingBasket, Users } from 'lucide-react'
+import { getClientSituacao, listClients } from '../api/clients'
 import { Alert } from '../components/Alert'
+import { ClientMap } from '../components/ClientMap'
 import { Spinner } from '../components/Spinner'
-import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../context/auth-context'
-import { getApiBaseUrl } from '../lib/config'
-import {
-  classifyStatus,
-  documentoTipo,
-  formatDataHora,
-  formatDias,
-  maskDocumento,
-  onlyDigits,
-  validateDocumento,
-} from '../lib/format'
-import { clearHistory, pushHistory, readHistory } from '../lib/history'
+import { classifyStatus, onlyDigits } from '../lib/format'
 
-const DIAS_PADRAO = 30
-const DIAS_OPCOES = [7, 15, 30, 60, 90, 180, 365]
-const inputClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:bg-slate-50'
-const labelClass = 'mb-1.5 block text-sm font-medium text-slate-700'
+const PAGE_SIZE = 50
+const DEFAULT_DAYS = 30
+const fieldClass = 'wallet-field'
+const VIEWS = ['lista', 'mapa', 'graficos']
+const WalletCharts = lazy(() => import('../components/WalletCharts').then((module) => ({ default: module.WalletCharts })))
 
-function MetaItem({ label, value, mono = false }) {
+function currency(value) {
+  if (value === null || value === undefined || value === '') return '—'
+  const amount = Number(value)
+  return Number.isFinite(amount)
+    ? amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '—'
+}
+
+function date(value) {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('pt-BR')
+}
+
+function Stat({ label, value, tone = '', icon: Icon }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
-      <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">{label}</dt>
-      <dd className={`mt-0.5 text-sm font-semibold text-slate-800 ${mono ? 'font-mono text-xs' : ''}`}>
-        {value}
-      </dd>
+    <div className="wallet-stat">
+      <span className="wallet-stat-label">{Icon ? <Icon size={15} aria-hidden="true" /> : null}{label}</span>
+      <strong className={tone}>{value}</strong>
     </div>
   )
 }
 
-function PageHeader() {
+function Pagination({ page, loading, hasNext, onPrevious, onNext, top = false }) {
   return (
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <nav className={`wallet-pagination ${top ? 'wallet-pagination-top' : ''}`} aria-label={top ? 'Paginação superior' : 'Paginação inferior'}>
+      <span>Página {page} · até {PAGE_SIZE} registros</span>
       <div>
-        <p className="text-xs font-semibold tracking-wider text-blue-600 uppercase">
-          Clientes · WinThor
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-900 sm:text-3xl">
-          Consulta de situação cadastral
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Informe o CPF ou CNPJ para verificar se o cliente existe na base e se possui compras na
-          janela de dias escolhida.
-        </p>
+        <button type="button" onClick={onPrevious} disabled={page <= 1 || loading}><ArrowLeft size={14} /> Anterior</button>
+        <button type="button" onClick={onNext} disabled={loading || !hasNext}>Próxima <ArrowRight size={14} /></button>
       </div>
-      <span className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 font-mono text-xs text-slate-600 shadow-sm">
-        GET /clients/situacao
-      </span>
-    </header>
+    </nav>
   )
+}
+function ClientStatus({ status }) {
+  if (status) {
+    const info = classifyStatus(status.status)
+    return <span className={`wallet-status ${info.key}`}>{info.label}</span>
+  }
+  return <span className="wallet-status unavailable">Status indisponível</span>
 }
 
 export function SituacaoPage() {
   const { token, handleUnauthorized } = useAuth()
-
-  const [documento, setDocumento] = useState('')
-  const [dias, setDias] = useState(String(DIAS_PADRAO))
-  const [fieldError, setFieldError] = useState(null)
+  const [filters, setFilters] = useState({ search: '', cidade: '', codusur: '' })
+  const [submittedFilters, setSubmittedFilters] = useState(filters)
+  const [daysInput, setDaysInput] = useState(String(DEFAULT_DAYS))
+  const [appliedDays, setAppliedDays] = useState(DEFAULT_DAYS)
+  const [page, setPage] = useState(1)
+  const [clients, setClients] = useState([])
+  const [statusByClient, setStatusByClient] = useState({})
+  const [detailsByClient, setDetailsByClient] = useState({})
+  const [busyDetails, setBusyDetails] = useState({})
+  const [statusFilter, setStatusFilter] = useState('todos')
+  const [activeView, setActiveView] = useState('lista')
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-  const [showRaw, setShowRaw] = useState(false)
-  const [historico, setHistorico] = useState(readHistory)
+  const [selected, setSelected] = useState(null)
 
-  const handleConsultar = async (event) => {
-    event?.preventDefault()
-    if (loading) return
-
-    const problemaDocumento = validateDocumento(documento)
-    if (problemaDocumento) {
-      setFieldError(problemaDocumento)
-      return
-    }
-
-    const janela = Number(dias)
-    if (!Number.isInteger(janela) || janela < 1 || janela > 365) {
-      setFieldError('A janela de dias deve ser um número entre 1 e 365.')
-      return
-    }
-
-    setFieldError(null)
-    setError(null)
+  const loadClients = useCallback(async (signal) => {
     setLoading(true)
-    const startedAt = performance.now()
-
+    setError(null)
     try {
-      const data = await getClientSituacao({ documento, dias: janela, token })
-      const statusInfo = classifyStatus(data?.status)
-      const entry = {
-        documento: maskDocumento(documento),
-        documentoDigits: onlyDigits(documento),
-        dias: janela,
-        status: data?.status ?? null,
-        nome: data?.nome ?? null,
-        at: new Date().toISOString(),
-      }
-
-      setResult({
-        ...entry,
-        statusKey: statusInfo.key,
-        statusLabel: statusInfo.label,
-        statusDescription: statusInfo.description,
-        horario: formatDataHora(new Date()),
-        elapsedMs: Math.round(performance.now() - startedAt),
-        raw: data,
+      const result = await listClients({
+        ...submittedFilters,
+        codusur: submittedFilters.codusur ? Number(submittedFilters.codusur) : undefined,
+        pagina: page,
+        limite: PAGE_SIZE,
+        dias: appliedDays,
+        token,
+        signal,
       })
-      setHistorico(pushHistory(entry))
+      const clientList = Array.isArray(result) ? result : []
+      setClients(clientList)
+      setStatusByClient(Object.fromEntries(clientList.map((client) => [
+        String(client.CODCLI),
+        { status: client.status },
+      ])))
     } catch (err) {
-      if (err?.isUnauthorized) {
-        handleUnauthorized()
-        return
-      }
-      setError(err?.message ?? 'Falha ao consultar a situação do cliente.')
-      setResult(null)
+      if (err?.name === 'AbortError') return
+      if (err?.isUnauthorized) handleUnauthorized()
+      else setError(err?.message ?? 'Não foi possível carregar a carteira de clientes.')
+      setClients([])
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
+    }
+  }, [appliedDays, handleUnauthorized, page, submittedFilters, token])
+
+  /* oxlint-disable react/set-state-in-effect -- The effect intentionally starts a remote request. */
+  useEffect(() => {
+    const controller = new AbortController()
+    loadClients(controller.signal)
+    return () => controller.abort()
+  }, [loadClients])
+  /* oxlint-enable react/set-state-in-effect */
+
+  const loadClientDetails = async (client) => {
+    const id = String(client.CODCLI)
+    const document = onlyDigits(client.CGCENT)
+    if (!document || detailsByClient[id] || busyDetails[id]) return
+    setBusyDetails((current) => ({ ...current, [id]: true }))
+    try {
+      const result = await getClientSituacao({ documento: document, dias: appliedDays, token })
+      setDetailsByClient((current) => ({ ...current, [id]: result }))
+    } catch (err) {
+      if (err?.isUnauthorized) handleUnauthorized()
+      else setError(`Falha ao carregar detalhes de ${client.CLIENTE ?? `cliente ${id}`}: ${err?.message}`)
+    } finally {
+      setBusyDetails((current) => ({ ...current, [id]: false }))
     }
   }
 
-  const handleLimpar = () => {
-    setDocumento('')
-    setDias(String(DIAS_PADRAO))
-    setFieldError(null)
-    setError(null)
-    setResult(null)
-    setShowRaw(false)
+  const toggleClient = (client) => {
+    const id = String(client.CODCLI)
+    const isSelected = selected === id
+    setSelected(isSelected ? null : id)
+    if (!isSelected) loadClientDetails(client)
   }
 
-  const handleRepetir = (item) => {
-    setDocumento(item.documento)
-    setDias(String(item.dias))
-    setFieldError(null)
+  const handleViewTabKeyDown = (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const currentIndex = VIEWS.indexOf(activeView)
+    const direction = event.key === 'ArrowRight' ? 1 : -1
+    const nextView = VIEWS[(currentIndex + direction + VIEWS.length) % VIEWS.length]
+    setActiveView(nextView)
+    document.getElementById(`${nextView}-tab`)?.focus()
   }
 
-  const handleLimparHistorico = () => setHistorico(clearHistory())
+  const visibleClients = useMemo(() => clients.filter((client) => {
+    if (statusFilter === 'todos') return true
+    const result = statusByClient[String(client.CODCLI)]
+    return classifyStatus(result?.status).key === statusFilter
+  }), [clients, statusByClient, statusFilter])
+
+  const stats = useMemo(() => {
+    const statuses = clients.map((client) => statusByClient[String(client.CODCLI)]?.status)
+    return {
+      total: clients.length,
+      active: statuses.filter((status) => status === 'ativo').length,
+      inactive: statuses.filter((status) => status === 'inativo' || status === 'naoregistrado').length,
+      pending: clients.filter((client) => !onlyDigits(client.CGCENT)).length,
+    }
+  }, [clients, statusByClient])
+
+  const submitSearch = (event) => {
+    event.preventDefault()
+    const parsedDays = Number(daysInput)
+    const nextDays = Number.isInteger(parsedDays) ? Math.max(1, Math.min(365, parsedDays)) : DEFAULT_DAYS
+    setDaysInput(String(nextDays))
+    setAppliedDays(nextDays)
+    setPage(1)
+    setSelected(null)
+    setDetailsByClient({})
+    setSubmittedFilters({ ...filters })
+  }
+
   return (
-    <div className="animate-fade-in space-y-6">
-      <PageHeader />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-6">
-          <form onSubmit={handleConsultar} className="card-surface p-5 sm:p-6" noValidate>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
-              <div>
-                <label className={labelClass} htmlFor="documento">
-                  CPF / CNPJ
-                </label>
-                <input
-                  id="documento"
-                  name="documento"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  disabled={loading}
-                  value={documento}
-                  onChange={(event) => {
-                    setDocumento(maskDocumento(event.target.value))
-                    setFieldError(null)
-                  }}
-                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                  className={inputClass}
-                />
-                <p className="mt-1.5 text-xs text-slate-500">
-                  {documento
-                    ? `${documentoTipo(documento)} · ${onlyDigits(documento).length} dígitos`
-                    : 'Pode informar com ou sem pontuação.'}
-                </p>
-              </div>
-
-              <div>
-                <label className={labelClass} htmlFor="dias">
-                  Janela (dias)
-                </label>
-                <input
-                  id="dias"
-                  name="dias"
-                  type="number"
-                  min="1"
-                  max="365"
-                  step="1"
-                  disabled={loading}
-                  value={dias}
-                  onChange={(event) => {
-                    setDias(event.target.value)
-                    setFieldError(null)
-                  }}
-                  className={inputClass}
-                />
-                <p className="mt-1.5 text-xs text-slate-500">Máx. 365 dias.</p>
-              </div>
-            </div>
-
-            
-
-            {fieldError ? (
-              <div className="mt-4">
-                <Alert variant="warning">{fieldError}</Alert>
-              </div>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {loading ? <Spinner className="h-4 w-4" label="Consultando" /> : null}
-                {loading ? 'Consultando…' : 'Consultar situação'}
-              </button>
-              <button
-                type="button"
-                onClick={handleLimpar}
-                disabled={loading}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-60"
-              >
-                Limpar
-              </button>
-            </div>
-          </form>
-
-{error ? (
-            <Alert variant="error" title="Não foi possível concluir a consulta">
-              {error}
-            </Alert>
-          ) : null}
-
-          {result ? (
-            <section className="card-surface animate-fade-in-up overflow-hidden">
-              <div
-                className={`flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4 sm:px-6 ${
-                  result.statusKey === 'ativo'
-                    ? 'border-emerald-100 bg-emerald-50/60'
-                    : 'border-amber-100 bg-amber-50/60'
-                }`}
-              >
-                <div className="space-y-2">
-                  <StatusBadge statusKey={result.statusKey} label={result.statusLabel} />
-                  <p className="text-lg font-semibold text-slate-900">
-                    {result.nome ?? 'Nome não informado pela API'}
-                  </p>
-                  <p className="text-sm text-slate-600">{result.statusDescription}</p>
-                </div>
-                <p className="rounded-full bg-white/70 px-3 py-1 font-mono text-xs text-slate-500">
-                  {result.elapsedMs} ms
-                </p>
-              </div>
-
-              <dl className="grid gap-3 px-5 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
-                <MetaItem label="Documento" value={result.documento} />
-                <MetaItem label="Tipo" value={documentoTipo(result.documento)} />
-                <MetaItem label="Janela consultada" value={formatDias(result.dias)} />
-                <MetaItem label="Status retornado" value={result.status ?? '—'} />
-                <MetaItem label="Consultado em" value={result.horario} />
-                <MetaItem label="API" value={getApiBaseUrl()} mono />
-              </dl>
-
-              <div className="border-t border-slate-100 px-5 py-4 sm:px-6">
-                <button
-                  type="button"
-                  onClick={() => setShowRaw((value) => !value)}
-                  aria-expanded={showRaw}
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-slate-900"
-                >
-                  <svg
-                    className={`h-4 w-4 transition ${showRaw ? 'rotate-90' : ''}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M7.4 5.2 6.2 6.4l3.8 3.6-3.8 3.6 1.2 1.2 5-4.8-5-4.8Z" />
-                  </svg>
-                  {showRaw ? 'Ocultar resposta JSON' : 'Ver resposta JSON'}
-                </button>
-
-                {showRaw ? (
-                  <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-slate-900 p-4 font-mono text-xs leading-relaxed text-slate-100">
-                    {JSON.stringify(result.raw, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
-            </section>
-          ) : (
-            <section className="card-surface flex items-center gap-4 px-5 py-6 sm:px-6">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path
-                    fillRule="evenodd"
-                    d="M9 3a6 6 0 1 0 3.5 10.9l3.3 3.3 1.4-1.4-3.3-3.3A6 6 0 0 0 9 3Zm-4 6a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Nenhuma consulta recente</p>
-                <p className="text-sm text-slate-500">
-                  Digite um CPF/CNPJ e clique em <span className="font-medium">Consultar situação</span>{' '}
-                  para ver o resultado aqui.
-                </p>
-              </div>
-            </section>
-          )}
+    <div className="wallet-page animate-fade-in">
+      <header className="wallet-heading">
+        <div>
+          <p className="wallet-eyebrow"><span className="wallet-sun" /> RIOGRANDENSE · WINTHOR</p>
+          <h1>Carteira de clientes</h1>
+          <p className="wallet-subtitle">Acompanhe a situação cadastral e as últimas movimentações da sua carteira.</p>
         </div>
+        <div className="wallet-period"><span className="wallet-live-dot" /> Janela de atividade: {appliedDays} {appliedDays === 1 ? 'dia' : 'dias'}</div>
+      </header>
 
-        <aside className="space-y-6">
-          <section className="card-surface p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-900">Consultas recentes</h2>
-              {historico.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={handleLimparHistorico}
-                  className="text-xs font-semibold text-slate-500 transition hover:text-rose-600"
-                >
-                  Limpar
-                </button>
-              ) : null}
-            </div>
+      <section className="wallet-stats" aria-label="Resumo da carteira">
+        <Stat label="Clientes nesta página" value={stats.total} icon={Users} />
+        <Stat label="Clientes ativos" value={stats.active} tone="text-emerald-300" icon={CheckCircle2} />
+        <Stat label="Clientes inativos" value={stats.inactive} tone="text-amber-300" icon={CircleOff} />
+        <Stat label="Sem documento" value={stats.pending} icon={FileQuestion} />
+      </section>
 
-            {historico.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">
-                O histórico é salvo apenas neste navegador.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {historico.map((item) => (
-                  <li key={`${item.documentoDigits}-${item.at}`}>
-                    <button
-                      type="button"
-                      onClick={() => handleRepetir(item)}
-                      className="w-full rounded-xl border border-slate-100 bg-white px-3 py-2 text-left transition hover:border-blue-200 hover:bg-blue-50/60"
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-semibold text-slate-700">
-                          {item.documento}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            classifyStatus(item.status).key === 'ativo'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {classifyStatus(item.status).key === 'ativo' ? 'ativo' : 'inativo'}
-                        </span>
-                      </span>
-                      <span className="mt-1 block truncate text-xs text-slate-500">
-                        {item.nome ?? 'Sem nome'} · {formatDias(item.dias)} ·{' '}
-                        {new Date(item.at).toLocaleString('pt-BR')}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+      <form className="wallet-search" onSubmit={submitSearch}>
+        <label className="wallet-search-main">
+          <span>Busca</span>
+          <input className={fieldClass} value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="Nome, código ou CPF/CNPJ" />
+        </label>
+        <label>
+          <span>Cidade</span>
+          <input className={fieldClass} value={filters.cidade} onChange={(e) => setFilters({ ...filters, cidade: e.target.value })} placeholder="Filtrar município" />
+        </label>
+        <label>
+          <span>Código do vendedor</span>
+          <input className={fieldClass} type="number" min="1" value={filters.codusur} onChange={(e) => setFilters({ ...filters, codusur: e.target.value })} placeholder="Ex.: 12" />
+        </label>
+        <label>
+          <span>Janela (1–365 dias)</span>
+          <input className={fieldClass} type="number" min="1" max="365" required value={daysInput} onChange={(e) => setDaysInput(e.target.value)} />
+        </label>
+        <button className="wallet-primary" type="submit" disabled={loading}>{loading ? <Spinner label="Carregando" /> : <Search size={15} />} {loading ? 'Carregando…' : 'Buscar clientes'}</button>
+      </form>
 
-          <section className="card-surface space-y-3 p-5">
-            <h2 className="text-sm font-semibold text-slate-900">Como o status é calculado</h2>
-            <p className="text-sm text-slate-500">
-              Retorna <span className="font-semibold text-emerald-700">Ativo</span> quando o documento
-              existe na base e o cliente possui compras nos últimos N dias.
-            </p>
-            <p className="text-sm text-slate-500">
-              Caso contrário, retorna{' '}
-              <span className="font-semibold text-amber-700">inativo ou não encontrado</span>.
-            </p>
-            <ul className="space-y-1 border-t border-slate-100 pt-3 text-xs text-slate-500">
-              <li>
-                · <span className="font-mono">documento</span>: 11 a 20 caracteres (0-9 . - /)
-              </li>
-              <li>
-                · <span className="font-mono">dias</span>: 1 a 365 (padrão 30)
-              </li>
-              <li>
-                · Requer token Bearer obtido em <span className="font-mono">/auth/login</span>
-              </li>
-            </ul>
-          </section>
-        </aside>
+      <div className="wallet-view-tabs" role="tablist" aria-label="Visualização da carteira" onKeyDown={handleViewTabKeyDown}>
+        <button id="lista-tab" type="button" role="tab" aria-selected={activeView === 'lista'} aria-controls="clients-panel" className={activeView === 'lista' ? 'active' : ''} onClick={() => setActiveView('lista')}><List size={15} /> Lista de clientes</button>
+        <button id="map-tab" type="button" role="tab" aria-selected={activeView === 'mapa'} aria-controls="map-panel" className={activeView === 'mapa' ? 'active' : ''} onClick={() => setActiveView('mapa')}><MapPinned size={15} /> Mapa</button>
+        <button id="graficos-tab" type="button" role="tab" aria-selected={activeView === 'graficos'} aria-controls="charts-panel" className={activeView === 'graficos' ? 'active' : ''} onClick={() => setActiveView('graficos')}><BarChart3 size={15} /> Gráficos</button>
       </div>
+
+      <div id="map-panel" role="tabpanel" aria-labelledby="map-tab" hidden={activeView !== 'mapa'}>
+        {activeView === 'mapa' ? (
+          <ClientMap
+            key={`${submittedFilters.search}|${submittedFilters.cidade}|${submittedFilters.codusur}|${appliedDays}`}
+            token={token}
+            filters={submittedFilters}
+            days={appliedDays}
+            onUnauthorized={handleUnauthorized}
+          />
+        ) : null}
+      </div>
+      <div id="charts-panel" role="tabpanel" aria-labelledby="graficos-tab" hidden={activeView !== 'graficos'}>
+        {activeView === 'graficos' ? loading ? (
+          <div className="wallet-loading"><Spinner label="Carregando gráficos" /> Carregando dados dos gráficos…</div>
+        ) : clients.length ? (
+          <Suspense fallback={<div className="wallet-chart-loading">Carregando gráficos…</div>}>
+            <WalletCharts clients={clients} statusByClient={statusByClient} />
+          </Suspense>
+        ) : (
+          <div className="wallet-empty"><BarChart3 size={28} aria-hidden="true" /><strong>Sem dados para os gráficos</strong><p>Ajuste os filtros e tente novamente.</p></div>
+        ) : null}
+      </div>
+      <div id="clients-panel" role="tabpanel" aria-labelledby="lista-tab" hidden={activeView !== 'lista'}>
+      <div className="wallet-list-head">
+        <div>
+          <h2>Clientes</h2>
+          <p>O status acompanha cada cliente; expanda um registro para ver mais detalhes.</p>
+        </div>
+        <div className="wallet-list-actions">
+          <label className="wallet-status-filter"><span>Status</span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="todos">Todos</option><option value="ativo">Ativos</option><option value="inativo">Inativos</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <Pagination
+        page={page}
+        loading={loading}
+        hasNext={clients.length === PAGE_SIZE}
+        onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+        onNext={() => setPage((value) => value + 1)}
+        top
+      />
+
+      {error ? <div className="wallet-alert"><Alert variant="error" title="Não foi possível concluir">{error}</Alert></div> : null}
+
+      {loading ? <div className="wallet-loading"><Spinner label="Carregando clientes" /> Carregando carteira…</div> : visibleClients.length === 0 ? (
+        <div className="wallet-empty"><span aria-hidden="true">⌕</span><strong>Nenhum cliente encontrado</strong><p>Ajuste os filtros e tente novamente.</p></div>
+      ) : (
+        <div className="wallet-client-list">
+          {visibleClients.map((client) => {
+            const id = String(client.CODCLI)
+            const status = statusByClient[id]
+            const details = detailsByClient[id]
+            const isSelected = selected === id
+            return (
+              <article className={`wallet-client ${isSelected ? 'selected' : ''}`} key={id}>
+                <button
+                  className="wallet-client-main"
+                  type="button"
+                  onClick={() => toggleClient(client)}
+                  aria-expanded={isSelected}
+                  aria-controls={`client-details-${id}`}
+                >
+                  <span className="wallet-avatar">{String(client.CLIENTE ?? 'C').trim().slice(0, 1).toUpperCase()}</span>
+                  <span className="wallet-client-name"><strong>{client.CLIENTE ?? 'Cliente sem nome'}</strong><small>#{client.CODCLI} <i>·</i> {client.MUNICENT || 'Cidade não informada'}</small></span>
+                  <span className="wallet-client-contact"><small>CPF / CNPJ</small><strong>{client.CGCENT || 'Não informado'}</strong></span>
+                  <span className="wallet-client-credit"><small>Limite de crédito</small><strong>{currency(client.LIMCRED)}</strong></span>
+                  <span className="wallet-client-state"><ClientStatus status={status} /></span>
+                  <span className={`wallet-chevron ${isSelected ? 'open' : ''}`} aria-hidden="true"><ChevronDown size={17} /></span>
+                </button>
+                <div className="wallet-detail" id={`client-details-${id}`} hidden={!isSelected}>
+                    <div><small>Endereço</small><strong>{client.ENDERENT || details?.endereco || 'Não informado'}{client.MUNICENT ? `, ${client.MUNICENT}` : ''}</strong></div>
+                    <div><small>Telefone</small><strong>{client.TELENT || details?.telefone || 'Não informado'}</strong></div>
+                    <div><small>Vendedor</small><strong>{details?.vendedor?.nome ? `${details.vendedor.nome} · #${details.vendedor.codusur}` : busyDetails[id] ? 'Carregando detalhes…' : 'Não informado'}</strong></div>
+                    <div><small>Última compra</small><strong>{details?.ultima_compra ? `${date(details.ultima_compra.data)} · ${currency(details.ultima_compra.valor_total)}` : busyDetails[id] ? 'Carregando detalhes…' : 'Não informado'}</strong></div>
+                    {client.OBS ? <div className="wallet-observation"><small>Observações</small><strong>{client.OBS}</strong></div> : null}
+                    {details?.ultima_compra ? (
+                      <div className="wallet-products">
+                        <div className="wallet-products-heading">
+                          <small><ShoppingBasket size={15} aria-hidden="true" /> Itens da última compra</small>
+                          <span>{details.ultima_compra.itens?.length ?? 0} produto(s)</span>
+                        </div>
+                        {details.ultima_compra.itens?.length ? (
+                          <div className="wallet-product-grid">
+                            {details.ultima_compra.itens.map((item, index) => {
+                              const quantity = item.quantidade === null || item.quantidade === undefined
+                                ? null
+                                : Number(item.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+                              return (
+                                <div className="wallet-product-card" key={`${item.codigo_produto ?? item.descricao ?? 'item'}-${index}`}>
+                                  <div className="wallet-product-image">
+                                    {item.codigo_produto ? <span className="wallet-product-code">#{item.codigo_produto}</span> : null}
+                                    {item.imagem ? <img src={item.imagem} alt={item.descricao ?? 'Produto comprado'} loading="lazy" /> : <span className="wallet-product-image-empty"><PackageOpen size={24} /><small>Sem imagem</small></span>}
+                                  </div>
+                                  <div className="wallet-product-info">
+                                    <strong>{item.descricao ?? `Produto ${index + 1}`}</strong>
+                                    <span className="wallet-product-package">{item.embalagem || item.unidade || 'Embalagem não informada'}</span>
+                                    <div className="wallet-product-metrics">
+                                      <span><small>Quantidade</small><strong>{quantity !== null ? `${quantity} ${item.unidade || 'un.'}` : '—'}</strong></span>
+                                      <span><small>Preço unit.</small><strong>{currency(item.preco_unitario)}</strong></span>
+                                      <span><small>Total</small><strong>{currency(item.valor)}</strong></span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : <p className="wallet-products-empty">A API não retornou produtos para esta compra.</p>}
+                      </div>
+                    ) : null}
+                </div>
+              </article>
+            )
+          })}
+      </div>
+      )}
+
+      <Pagination
+        page={page}
+        loading={loading}
+        hasNext={clients.length === PAGE_SIZE}
+        onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+        onNext={() => setPage((value) => value + 1)}
+      />
+        </div>
     </div>
   )
 }

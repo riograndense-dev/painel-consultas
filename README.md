@@ -16,6 +16,18 @@ Portal em React (JSX puro) que autentica na API descrita em `docs/openapi.json` 
 
 ## Funcionalidades
 
+- **Carteira de clientes** com paginação, filtros por nome/código/documento, município e vendedor.
+- **Janela de atividade configurável** entre 1 e 365 dias, aplicada à lista e aos detalhes do cliente.
+- **Situação cadastral por cliente** sob demanda, incluindo vendedor, cidade, última compra e itens
+  com imagem retornados por `/clients/situacao`.
+- **Resumo de status** recebido junto com cada cliente e filtro local para ativos e inativos.
+- **Mapa interativo por praça ou cidade**, com cores e filtro por `SEQROTA`, busca, zoom,
+  enquadramento automático e detalhes ao selecionar um marcador.
+- **Busca integrada ao mapa**, interação ativada por clique, zoom pela roda sem rolar a página,
+  rótulos adaptativos conforme a escala e resumo de ativos/inativos preparado para a API.
+- **Aba de gráficos com Recharts** para situação dos clientes e cidades mais presentes na página atual.
+- **Paginação no início e no fim da lista**, com ícones Lucide nos principais controles.
+- **Tema escuro fixo** em verde floresta e latão, com layout responsivo para a carteira.
 - **Login** em `POST /auth/login` (fluxo OAuth2 password do `securityScheme OAuth2PasswordBearer`,
   `application/x-www-form-urlencoded`, com fallback automático para JSON).
 - **Sessão**: token persistido em `localStorage`, decodificado com `jwt-decode`, exibição das claims
@@ -90,8 +102,16 @@ VITE_API_URL=http://localhost:8000
 | GET    | `/auth/me`           | Dados do usuário autenticado                     |
 | POST   | `/auth/logout`       | Encerrar sessão no servidor                      |
 | GET    | `/clients/situacao`  | **Consulta principal** (`documento`, `dias`)     |
-| GET    | `/clients/`          | Busca por nome/código (helper disponível)        |
+| GET    | `/clients/`          | Carteira com busca, cidade, vendedor e paginação |
+| GET    | `/clients/{codcli}`  | Dados cadastrais de um cliente                  |
+| GET    | `/mapa/clientes/pracas` | Praças, rotas, coordenadas e totais de clientes |
+| GET    | `/mapa/clientes/cidades` | Municípios, coordenadas e totais de clientes   |
 | GET    | `/`                  | Teste de conectividade na tela de login          |
+
+O mapa usa as coordenadas fornecidas pela própria API, priorizando a visão por praças. Cada
+`SEQROTA` recebe uma cor própria e pode ser isolada pela legenda; a visão por cidades permanece
+disponível como alternativa. A cartografia de fundo usa tiles do OpenStreetMap. A lista recebe o
+status de cada cliente pelo endpoint `GET /clients/`.
 
 ## Scripts
 

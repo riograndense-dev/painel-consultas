@@ -16,12 +16,12 @@ function initials(name) {
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-blue-600/25">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200/20 bg-gradient-to-br from-emerald-900 to-slate-900 text-sm font-bold text-amber-200 shadow-lg shadow-black/25">
         RG
       </span>
       <span className="leading-tight">
-        <span className="block text-sm font-semibold text-slate-900">Riograndense · API</span>
-        <span className="block text-xs text-slate-500">Winthor + iSA</span>
+        <span className="block text-sm font-semibold text-slate-900">Riograndense</span>
+        <span className="block text-xs text-slate-500">Carteira WinThor</span>
       </span>
     </div>
   )
@@ -54,12 +54,12 @@ export function AppShell() {
                 className={({ isActive }) =>
                   `rounded-lg px-3 py-2 text-sm font-medium transition ${
                     isActive
-                      ? 'bg-blue-50 text-blue-700'
+                      ? 'bg-emerald-950 text-amber-200'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`
                 }
               >
-                Situação do cliente
+                Carteira de clientes
               </NavLink>
             </nav>
           </div>
@@ -135,7 +135,7 @@ export function AppShell() {
 
       <footer className="border-t border-slate-200/80 bg-white/60 py-5">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p>Consulta de situação cadastral · endpoint GET /clients/situacao</p>
+          <p>Carteira de clientes · situação cadastral WinThor</p>
           <p>
             {expiresAt
               ? `Sessão válida até ${formatDataHora(new Date(expiresAt))}`
