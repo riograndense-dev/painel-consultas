@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown, CircleOff,
 import { getClientSituacao, listClients } from '../api/clients'
 import { Alert } from '../components/Alert'
 import { ClientMap } from '../components/ClientMap'
+import { CopyDocumentButton } from '../components/CopyDocumentButton'
 import { Spinner } from '../components/Spinner'
 import { useAuth } from '../context/auth-context'
 import { classifyStatus, onlyDigits } from '../lib/format'
@@ -273,20 +274,26 @@ export function SituacaoPage() {
             const isSelected = selected === id
             return (
               <article className={`wallet-client ${isSelected ? 'selected' : ''}`} key={id}>
-                <button
+                <div
                   className="wallet-client-main"
-                  type="button"
                   onClick={() => toggleClient(client)}
-                  aria-expanded={isSelected}
-                  aria-controls={`client-details-${id}`}
                 >
                   <span className="wallet-avatar">{String(client.CLIENTE ?? 'C').trim().slice(0, 1).toUpperCase()}</span>
                   <span className="wallet-client-name"><strong>{client.CLIENTE ?? 'Cliente sem nome'}</strong><small>#{client.CODCLI} <i>·</i> {client.MUNICENT || 'Cidade não informada'}</small></span>
-                  <span className="wallet-client-contact"><small>CPF / CNPJ</small><strong>{client.CGCENT || 'Não informado'}</strong></span>
+                  <span className="wallet-client-contact">
+                    <small>CPF / CNPJ</small>
+                    <span className="wallet-document-value"><strong>{client.CGCENT || 'Não informado'}</strong><CopyDocumentButton document={client.CGCENT} /></span>
+                  </span>
                   <span className="wallet-client-credit"><small>Limite de crédito</small><strong>{currency(client.LIMCRED)}</strong></span>
                   <span className="wallet-client-state"><ClientStatus status={status} /></span>
-                  <span className={`wallet-chevron ${isSelected ? 'open' : ''}`} aria-hidden="true"><ChevronDown size={17} /></span>
-                </button>
+                  <button
+                    className={`wallet-chevron ${isSelected ? 'open' : ''}`}
+                    type="button"
+                    aria-label={isSelected ? `Recolher detalhes de ${client.CLIENTE ?? `cliente ${id}`}` : `Expandir detalhes de ${client.CLIENTE ?? `cliente ${id}`}`}
+                    aria-expanded={isSelected}
+                    aria-controls={`client-details-${id}`}
+                  ><ChevronDown size={17} aria-hidden="true" /></button>
+                </div>
                 <div className="wallet-detail" id={`client-details-${id}`} hidden={!isSelected}>
                     <div><small>Endereço</small><strong>{client.ENDERENT || details?.endereco || 'Não informado'}{client.MUNICENT ? `, ${client.MUNICENT}` : ''}</strong></div>
                     <div><small>Telefone</small><strong>{client.TELENT || details?.telefone || 'Não informado'}</strong></div>

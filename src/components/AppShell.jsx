@@ -51,6 +51,7 @@ export function AppShell() {
             <nav className="hidden items-center gap-1 sm:flex">
               <NavLink
                 to="/"
+                end
                 className={({ isActive }) =>
                   `rounded-lg px-3 py-2 text-sm font-medium transition ${
                     isActive
@@ -60,6 +61,18 @@ export function AppShell() {
                 }
               >
                 Carteira de clientes
+              </NavLink>
+              <NavLink
+                to="/atualizacoes"
+                className={({ isActive }) =>
+                  `rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-emerald-950 text-amber-200'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`
+                }
+              >
+                Atualizações
               </NavLink>
             </nav>
           </div>
@@ -127,6 +140,10 @@ export function AppShell() {
             ) : null}
           </div>
         </div>
+        <nav className="mx-auto flex w-full max-w-6xl gap-1 border-t border-slate-100 px-4 py-2 sm:hidden" aria-label="Navegação principal">
+          <NavLink to="/" end className={({ isActive }) => `flex-1 rounded-lg px-3 py-2 text-center text-sm font-medium ${isActive ? 'bg-emerald-950 text-amber-200' : 'text-slate-600'}`}>Carteira</NavLink>
+          <NavLink to="/atualizacoes" className={({ isActive }) => `flex-1 rounded-lg px-3 py-2 text-center text-sm font-medium ${isActive ? 'bg-emerald-950 text-amber-200' : 'text-slate-600'}`}>Atualizações</NavLink>
+        </nav>
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">

@@ -43,6 +43,11 @@
 .wallet-client-name small,.wallet-client-contact small,.wallet-client-credit small { color:#777e72; font-size:.64rem; }
 .wallet-client-name i { color:#a0a393; font-style:normal; }
 .wallet-client-contact strong,.wallet-client-credit strong { overflow:hidden; color:#454b42; font-size:.7rem; font-weight:550; text-overflow:ellipsis; white-space:nowrap; }
+.wallet-document-value { display:flex; min-width:0; align-items:center; gap:.4rem; }
+.wallet-document-value > strong { min-width:0; }
+.wallet-copy-document { display:inline-flex; flex:0 0 auto; min-height:1.55rem; align-items:center; justify-content:center; gap:.25rem; padding:0 .4rem; border:1px solid #d9d2b9; border-radius:.42rem; color:#535a50; background:#fffdf4; font:inherit; font-size:.56rem; font-weight:700; cursor:pointer; transition:border-color .15s ease,color .15s ease,background .15s ease; }
+.wallet-copy-document:hover { border-color:#98bd8a; color:#304e2a; background:#edf4e9; }
+.wallet-copy-document.copied { border-color:#98bd8a; color:#304e2a; background:#edf4e9; }
 .wallet-client-state { justify-self:start; }
 .wallet-status { display:inline-flex; align-items:center; gap:.4rem; padding:.38rem .6rem; border:1px solid; border-radius:999px; font-size:.65rem; font-weight:750; white-space:nowrap; }
 .wallet-status.ativo { border-color:#bed8b4; color:#304e2a; background:#edf4e9; }
@@ -158,12 +163,59 @@
 .wallet-map-placeholder { display:grid; min-height:12rem; place-items:center; color:#6d7468; font-size:.75rem; }
 .wallet-map-caption { margin:0; padding:.6rem 1rem; color:#777e72; font-size:.62rem; }
 
+.updates-search { grid-template-columns:minmax(12rem,1.35fr) repeat(3,minmax(8rem,.75fr)) auto; }
+.updates-list-head { display:flex; align-items:end; justify-content:space-between; gap:1rem; margin:1.8rem 0 .8rem; }
+.updates-list-head h2 { margin:0; color:#252823; font-family:var(--font-display); font-size:1.2rem; font-weight:600; }
+.updates-list-head p { margin:.28rem 0 0; color:var(--wallet-muted); font-size:.75rem; }
+.updates-list-head > span { padding:.4rem .65rem; border:1px solid var(--wallet-line); border-radius:999px; color:#62695e; background:#f8f5e8; font-size:.65rem; font-weight:700; white-space:nowrap; }
+.updates-list { display:flex; flex-direction:column; }
+.update-card { position:relative; display:grid; grid-template-columns:2.8rem minmax(0,1fr); }
+.update-timeline { position:relative; display:flex; justify-content:center; }
+.update-timeline::after { position:absolute; top:2.45rem; bottom:0; width:1px; background:#d9d2b9; content:""; }
+.update-card:last-child .update-timeline::after { display:none; }
+.update-timeline > span { position:relative; z-index:1; display:grid; width:1.7rem; height:1.7rem; margin-top:1.05rem; place-items:center; border:1px solid #d9d2b9; border-radius:50%; color:#777e72; background:#f8f5e8; font-size:.58rem; font-weight:800; }
+.update-card-body { margin-bottom:.65rem; overflow:hidden; border:1px solid var(--wallet-line); border-radius:.9rem; background:var(--wallet-panel); box-shadow:0 4px 12px rgb(37 40 35 / .035); }
+.update-card-body > header { display:flex; align-items:flex-start; justify-content:space-between; gap:1.5rem; padding:1rem 1.1rem .85rem; }
+.update-card-body h2 { margin:.25rem 0 0; color:#252823; font-family:var(--font-display); font-size:1rem; font-weight:600; }
+.update-card-body header p { margin:.2rem 0 0; color:#777e72; font-size:.68rem; }
+.update-card-body time { display:flex; align-items:flex-end; flex-direction:column; gap:.15rem; color:#777e72; font-size:.62rem; white-space:nowrap; }
+.update-card-body time strong { color:#454b42; font-size:.74rem; }
+.update-card-actions { display:flex; align-items:flex-end; flex-direction:column; gap:.55rem; }
+.update-card-actions > button { display:inline-flex; min-height:2rem; align-items:center; gap:.35rem; padding:0 .6rem; border:1px solid #d9d2b9; border-radius:.5rem; color:#3d443a; background:#fffdf4; font-size:.64rem; font-weight:700; cursor:pointer; }
+.update-card-actions > button:hover { border-color:#98bd8a; color:#304e2a; background:#edf4e9; }
+.update-card-actions > button svg:last-child { transition:transform .18s ease; }
+.update-card-actions > button svg.open:last-child { transform:rotate(180deg); }
+.update-recency { color:#6e5630; font-size:.6rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+.update-card-body dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin:0; padding:.8rem 1.1rem 1rem; border-top:1px solid #ebe5d0; background:#f8f5e8; }
+.update-card-body dl > div { min-width:0; }
+.update-card-body dt { margin-bottom:.3rem; color:#777e72; font-size:.6rem; }
+.update-card-body dd { display:flex; min-height:1.55rem; align-items:center; gap:.4rem; margin:0; overflow-wrap:anywhere; color:#454b42; font-size:.7rem; font-weight:650; }
+.update-purchase { padding:1rem 1.1rem 1.1rem; border-top:1px solid #e5dfc9; background:#fffdf4; }
+.update-purchase-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin-bottom:1rem; }
+.update-purchase-summary > div { display:flex; min-width:0; flex-direction:column; gap:.25rem; }
+.update-purchase-summary small { color:#777e72; font-size:.6rem; }
+.update-purchase-summary strong { color:#343831; font-size:.72rem; }
+.update-purchase-loading { display:flex; min-height:4rem; align-items:center; justify-content:center; gap:.45rem; color:#777e72; font-size:.7rem; }
+.update-purchase-empty { margin:0; padding:.75rem; border:1px dashed #d9d2b9; border-radius:.65rem; color:#777e72; background:#f8f5e8; font-size:.7rem; text-align:center; }
+.update-card.today .update-card-body { border-color:#e64343; box-shadow:0 8px 22px rgb(186 32 32 / .18); }
+.update-card.today .update-timeline > span { border-color:#ba2020; color:#fff; background:#ba2020; }
+.update-card.today .update-card-body > header { background:linear-gradient(90deg,#ffebeb,#fffdf4 62%); }
+.update-card.today .update-recency { color:#a31d1d; }
+.update-card.yesterday .update-card-body { border-color:#ef812e; box-shadow:0 7px 20px rgb(209 92 18 / .15); }
+.update-card.yesterday .update-timeline > span { border-color:#d85f16; color:#fff; background:#d85f16; }
+.update-card.yesterday .update-card-body > header { background:linear-gradient(90deg,#fff0dd,#fffdf4 62%); }
+.update-card.yesterday .update-recency { color:#b4490c; }
+.update-card.recent .update-card-body { border-color:#c9d8bd; }
+.update-card.recent .update-timeline > span { border-color:#98bd8a; color:#304e2a; background:#edf4e9; }
+
 @media (max-width: 900px) {
   .wallet-search { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .wallet-charts { grid-template-columns:1fr; }
   .wallet-client-main { grid-template-columns:2.5rem minmax(10rem,1fr) minmax(7rem,.9fr) auto 2rem; }
   .wallet-client-credit { display:none; }
   .wallet-detail { grid-template-columns:repeat(2,minmax(0,1fr)); padding-left:1rem; }
+  .update-card-body dl { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .update-purchase-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 600px) {
   .wallet-heading { align-items:flex-start; flex-direction:column; }
@@ -178,11 +230,18 @@
   .wallet-status-filter { width:100%; }
   .wallet-list-actions { width:100%; align-items:stretch; flex-direction:column-reverse; }
   .wallet-client-main { grid-template-columns:2.3rem minmax(0,1fr) auto 2rem; gap:.55rem; padding:.75rem; }
-  .wallet-client-contact { display:none; }
+  .wallet-client-contact { grid-column:2/-1; }
   .wallet-client-state { justify-self:end; }
   .wallet-client-name strong { max-width:10rem; }
+  .wallet-copy-document span { display:none; }
   .wallet-status { font-size:.58rem; padding:.32rem .42rem; }
   .wallet-detail { gap:.7rem; }
   .wallet-product-grid { grid-template-columns:repeat(auto-fill,minmax(165px,1fr)); gap:.55rem; }
   .wallet-pagination { align-items:flex-start; flex-direction:column; }
+  .updates-list-head { align-items:flex-start; flex-direction:column; }
+  .update-card { grid-template-columns:2.2rem minmax(0,1fr); }
+  .update-card-body > header { align-items:flex-start; flex-direction:column; gap:.65rem; }
+  .update-card-actions,.update-card-body time { width:100%; align-items:flex-start; }
+  .update-card-body dl { grid-template-columns:1fr; }
+  .update-purchase-summary { grid-template-columns:1fr 1fr; }
 }

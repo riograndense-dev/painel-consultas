@@ -2,11 +2,36 @@ import { onlyDigits } from '../lib/format'
 import { apiRequest } from './client'
 
 /** GET /clients/ — carteira paginada com filtros por cliente, cidade e vendedor. */
-export function listClients({ search, cidade, codusur, pagina = 1, limite = 50, dias = 30, token, signal } = {}) {
+export function listClients({ search, cnpj, cidade, codusur, pagina = 1, limite = 50, dias = 30, token, signal } = {}) {
+  const searchDigits = onlyDigits(search)
+  const searchIsDocument = searchDigits.length === 11 || searchDigits.length === 14
+
   return apiRequest('/clients/', {
     token,
     signal,
-    query: { search, cidade, codusur, pagina, limite, dias },
+    query: {
+      search: searchIsDocument ? undefined : search,
+      cnpj: onlyDigits(cnpj) || (searchIsDocument ? searchDigits : undefined),
+      cidade,
+      codusur,
+      pagina,
+      limite,
+      dias,
+    },
+  })
+}
+
+/** GET /clients/inativados — clientes ordenados pela inativação mais recente. */
+export function listInactiveClients({ dias = 30, cnpj, cidade, codusur, token, signal } = {}) {
+  return apiRequest('/clients/inativados', {
+    token,
+    signal,
+    query: {
+      dias,
+      cnpj: onlyDigits(cnpj) || undefined,
+      cidade,
+      codusur,
+    },
   })
 }
 
