@@ -21,8 +21,18 @@ export function listClients({ search, cnpj, cidade, codusur, pagina = 1, limite 
   })
 }
 
-/** GET /clients/inativados — clientes ordenados pela inativação mais recente. */
-export function listInactiveClients({ dias = 30, cnpj, cidade, codusur, token, signal } = {}) {
+/** GET /clients/inativados — página de clientes ordenados pela inativação mais recente. */
+export function listInactiveClients({
+  dias = 30,
+  cnpj,
+  cidade,
+  codusur,
+  pagina = 1,
+  limite = 20,
+  incluirUltimaCompra = false,
+  token,
+  signal,
+} = {}) {
   return apiRequest('/clients/inativados', {
     token,
     signal,
@@ -31,6 +41,9 @@ export function listInactiveClients({ dias = 30, cnpj, cidade, codusur, token, s
       cnpj: onlyDigits(cnpj) || undefined,
       cidade,
       codusur,
+      pagina,
+      limite,
+      incluir_ultima_compra: incluirUltimaCompra,
     },
   })
 }

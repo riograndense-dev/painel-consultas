@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarClock, ChevronDown, Clock3, MapPin, PackageOpen, Search, ShieldAlert, ShoppingBasket, Users } from 'lucide-react'
-import { getClientSituacao, listInactiveClients } from '../api/clients'
+import { listInactiveClients } from '../api/clients'
 import { Alert } from '../components/Alert'
 import { CopyDocumentButton } from '../components/CopyDocumentButton'
 import { Spinner } from '../components/Spinner'
@@ -75,9 +75,8 @@ export function AtualizacoesPage() {
   const [appliedDays, setAppliedDays] = useState(DEFAULT_DAYS)
   const [clients, setClients] = useState([])
   const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0 })
   const [selected, setSelected] = useState(null)
-  const [detailsByClient, setDetailsByClient] = useState({})
-  const [busyDetails, setBusyDetails] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -89,20 +88,35 @@ export function AtualizacoesPage() {
         ...submittedFilters,
         codusur: submittedFilters.codusur ? Number(submittedFilters.codusur) : undefined,
         dias: appliedDays,
+        pagina: page,
+        limite: PAGE_SIZE,
+        incluirUltimaCompra: true,
         token,
         signal,
       })
-      const list = Array.isArray(result) ? result : []
-      setClients([...list].sort((a, b) => String(b.data_inativacao ?? '').localeCompare(String(a.data_inativacao ?? ''))))
+      const isLegacyResponse = Array.isArray(result)
+      const allItems = isLegacyResponse ? result : (Array.isArray(result?.items) ? result.items : [])
+      const list = isLegacyResponse
+        ? allItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+        : allItems
+      const total = isLegacyResponse ? allItems.length : Math.max(0, Number(result?.total) || 0)
+      const totalPages = isLegacyResponse
+        ? Math.ceil(total / PAGE_SIZE)
+        : Math.max(0, Number(result?.total_paginas) || 0)
+
+      setClients(list)
+      setPagination({ total, totalPages })
+      setSelected(null)
     } catch (err) {
       if (err?.name === 'AbortError') return
       if (err?.isUnauthorized) handleUnauthorized()
       else setError(err?.message ?? 'Não foi possível carregar as atualizações.')
       setClients([])
+      setPagination({ total: 0, totalPages: 0 })
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [appliedDays, handleUnauthorized, submittedFilters, token])
+  }, [appliedDays, handleUnauthorized, page, submittedFilters, token])
 
   /* oxlint-disable react/set-state-in-effect -- The effect intentionally starts a remote request. */
   useEffect(() => {
@@ -115,40 +129,15 @@ export function AtualizacoesPage() {
   const stats = useMemo(() => {
     const elapsed = clients.map((client) => daysSince(client.data_inativacao))
     return {
-      total: clients.length,
       sevenDays: elapsed.filter((days) => days !== null && days <= 7).length,
       thirtyDays: elapsed.filter((days) => days !== null && days <= 30).length,
       cities: new Set(clients.map((client) => client.MUNICENT).filter(Boolean)).size,
     }
   }, [clients])
 
-  const totalPages = Math.max(1, Math.ceil(clients.length / PAGE_SIZE))
-  const visibleClients = useMemo(
-    () => clients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [clients, page],
-  )
-
-  const togglePurchase = async (client) => {
+  const togglePurchase = (client) => {
     const id = String(client.CODCLI)
-    const isSelected = selected === id
-    setSelected(isSelected ? null : id)
-    if (isSelected || detailsByClient[id] || busyDetails[id]) return
-
-    if (!client.CGCENT) {
-      setDetailsByClient((current) => ({ ...current, [id]: { ultima_compra: null } }))
-      return
-    }
-
-    setBusyDetails((current) => ({ ...current, [id]: true }))
-    try {
-      const result = await getClientSituacao({ documento: client.CGCENT, dias: appliedDays, token })
-      setDetailsByClient((current) => ({ ...current, [id]: result }))
-    } catch (err) {
-      if (err?.isUnauthorized) handleUnauthorized()
-      else setError(`Falha ao carregar a última compra de ${client.CLIENTE ?? `cliente ${id}`}: ${err?.message}`)
-    } finally {
-      setBusyDetails((current) => ({ ...current, [id]: false }))
-    }
+    setSelected((current) => current === id ? null : id)
   }
 
   const submitSearch = (event) => {
@@ -159,7 +148,6 @@ export function AtualizacoesPage() {
     setAppliedDays(nextDays)
     setPage(1)
     setSelected(null)
-    setDetailsByClient({})
     setSubmittedFilters({ ...filters })
   }
 
@@ -175,10 +163,10 @@ export function AtualizacoesPage() {
       </header>
 
       <section className="wallet-stats" aria-label="Resumo das atualizações">
-        <Stat label="Total de inativados" value={stats.total} icon={Users} />
-        <Stat label="Nos últimos 7 dias" value={stats.sevenDays} tone="text-amber-300" icon={ShieldAlert} />
-        <Stat label="Nos últimos 30 dias" value={stats.thirtyDays} icon={CalendarClock} />
-        <Stat label="Cidades afetadas" value={stats.cities} icon={MapPin} />
+        <Stat label="Total de inativados" value={pagination.total} icon={Users} />
+        <Stat label="Últimos 7 dias nesta página" value={stats.sevenDays} tone="text-amber-300" icon={ShieldAlert} />
+        <Stat label="Últimos 30 dias nesta página" value={stats.thirtyDays} icon={CalendarClock} />
+        <Stat label="Cidades nesta página" value={stats.cities} icon={MapPin} />
       </section>
 
       <form className="wallet-search updates-search" onSubmit={submitSearch}>
@@ -205,16 +193,16 @@ export function AtualizacoesPage() {
 
       <div className="updates-list-head">
         <div><h2>Linha do tempo</h2><p>A data de inativação considera a janela de {appliedDays} {appliedDays === 1 ? 'dia' : 'dias'} após a última compra válida.</p></div>
-        {!loading ? <span>{clients.length} {clients.length === 1 ? 'cliente' : 'clientes'}</span> : null}
+        {!loading ? <span>{pagination.total} {pagination.total === 1 ? 'cliente' : 'clientes'}</span> : null}
       </div>
 
       <UpdatesPagination
         page={page}
-        totalPages={totalPages}
-        total={clients.length}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
         loading={loading}
         onPrevious={() => setPage((current) => Math.max(1, current - 1))}
-        onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+        onNext={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
       />
 
       {loading ? (
@@ -223,14 +211,13 @@ export function AtualizacoesPage() {
         <div className="wallet-empty"><CalendarClock size={28} aria-hidden="true" /><strong>Nenhuma inativação encontrada</strong><p>Ajuste os filtros e tente novamente.</p></div>
       ) : (
         <div className="updates-list">
-          {visibleClients.map((client, index) => {
+          {clients.map((client, index) => {
             const absoluteIndex = (page - 1) * PAGE_SIZE + index
             const elapsed = daysSince(client.data_inativacao)
             const emphasis = elapsed === 0 ? 'today' : elapsed === 1 ? 'yesterday' : absoluteIndex < 4 ? 'recent' : ''
             const id = String(client.CODCLI)
             const isSelected = selected === id
-            const details = detailsByClient[id]
-            const purchase = details?.ultima_compra
+            const purchase = client.ultima_compra
             return (
               <article className={`update-card ${emphasis}`} key={client.CODCLI}>
                 <div className="update-timeline" aria-hidden="true"><span>{absoluteIndex + 1}</span></div>
@@ -244,8 +231,8 @@ export function AtualizacoesPage() {
                     <div className="update-card-actions">
                       <time dateTime={client.data_inativacao}>Inativou em <strong>{formatDate(client.data_inativacao)}</strong></time>
                       <button type="button" onClick={() => togglePurchase(client)} aria-expanded={isSelected} aria-controls={`update-purchase-${id}`}>
-                        {busyDetails[id] ? <Spinner label="Carregando última compra" /> : <ShoppingBasket size={14} aria-hidden="true" />}
-                        {busyDetails[id] ? 'Carregando…' : 'Última compra'}
+                        <ShoppingBasket size={14} aria-hidden="true" />
+                        Última compra
                         <ChevronDown className={isSelected ? 'open' : ''} size={14} aria-hidden="true" />
                       </button>
                     </div>
@@ -257,9 +244,7 @@ export function AtualizacoesPage() {
                     <div><dt>Telefone</dt><dd>{client.TELENT || 'Não informado'}</dd></div>
                   </dl>
                   <section className="update-purchase" id={`update-purchase-${id}`} hidden={!isSelected}>
-                    {busyDetails[id] ? (
-                      <div className="update-purchase-loading"><Spinner label="Carregando última compra" /> Carregando detalhes…</div>
-                    ) : purchase ? (
+                    {purchase ? (
                       <>
                         <div className="update-purchase-summary">
                           <div><small>Pedido</small><strong>{purchase.numped ? `#${purchase.numped}` : 'Não informado'}</strong></div>
@@ -313,11 +298,11 @@ export function AtualizacoesPage() {
 
       <UpdatesPagination
         page={page}
-        totalPages={totalPages}
-        total={clients.length}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
         loading={loading}
         onPrevious={() => setPage((current) => Math.max(1, current - 1))}
-        onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+        onNext={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
       />
     </div>
   )
