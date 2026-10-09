@@ -387,7 +387,7 @@
       "get": {
         "tags": ["Clientes"],
         "summary": "List Clientes Inativados",
-        "description": "Retorna uma página de clientes que passaram de ativos para inativos.\n\nA data da última compra válida deve estar fora da janela de ``dias``.\nPedidos cancelados não reativam o cliente. O resultado traz quem inativou\nmais recentemente primeiro e não inclui clientes que nunca compraram.\nOs detalhes da última compra podem ser incluídos sob demanda.",
+        "description": "Retorna uma página de clientes que passaram de ativos para inativos.\n\nA data da última compra válida deve estar fora da janela de ``dias``.\nPedidos cancelados não reativam o cliente. O resultado traz quem inativou\nmais recentemente primeiro e não inclui clientes que nunca compraram.\nCada cliente inclui o código e o nome do vendedor responsável. Os detalhes\nda última compra podem ser incluídos sob demanda.",
         "operationId": "list_clientes_inativados_clients_inativados_get",
         "security": [{ "OAuth2PasswordBearer": [] }],
         "parameters": [
@@ -2359,6 +2359,12 @@
             "title": "Data Inativacao"
           },
           "dias_inativo": { "type": "integer", "title": "Dias Inativo" },
+          "vendedor": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/VendedorSituacaoResponse" },
+              { "type": "null" }
+            ]
+          },
           "ultima_compra": {
             "anyOf": [
               { "$ref": "#/components/schemas/UltimaCompraResponse" },

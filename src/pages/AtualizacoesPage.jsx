@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarClock, ChevronDown, Clock3, MapPin, PackageOpen, Search, ShieldAlert, ShoppingBasket, Users } from 'lucide-react'
-import { getClientSituacao, listInactiveClients } from '../api/clients'
+import { listInactiveClients } from '../api/clients'
 import { Alert } from '../components/Alert'
 import { CopyDocumentButton } from '../components/CopyDocumentButton'
 import { Spinner } from '../components/Spinner'
@@ -83,7 +83,6 @@ export function AtualizacoesPage() {
   const [clients, setClients] = useState([])
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 })
-  const [sellersByClient, setSellersByClient] = useState({})
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -113,12 +112,6 @@ export function AtualizacoesPage() {
         : Math.max(0, Number(result?.total_paginas) || 0)
 
       setClients(list)
-      setSellersByClient(Object.fromEntries(list.flatMap((client) => {
-        const id = String(client.CODCLI)
-        const seller = embeddedSeller(client)
-        if (seller) return [[id, seller]]
-        return client.CGCENT ? [] : [[id, null]]
-      })))
       setPagination({ total, totalPages })
       setSelected(null)
     } catch (err) {
@@ -126,7 +119,6 @@ export function AtualizacoesPage() {
       if (err?.isUnauthorized) handleUnauthorized()
       else setError(err?.message ?? 'Não foi possível carregar as atualizações.')
       setClients([])
-      setSellersByClient({})
       setPagination({ total: 0, totalPages: 0 })
     } finally {
       if (!signal?.aborted) setLoading(false)
@@ -139,41 +131,6 @@ export function AtualizacoesPage() {
     loadInactiveClients(controller.signal)
     return () => controller.abort()
   }, [loadInactiveClients])
-  /* oxlint-enable react/set-state-in-effect */
-
-  /* oxlint-disable react/set-state-in-effect -- Seller data is loaded from the API for the current page. */
-  useEffect(() => {
-    const clientsWithoutSeller = clients.filter((client) => client.CGCENT && !embeddedSeller(client))
-    if (clientsWithoutSeller.length === 0) return undefined
-
-    const controller = new AbortController()
-    let unauthorized = false
-
-    Promise.all(clientsWithoutSeller.map(async (client) => {
-      try {
-        const result = await getClientSituacao({
-          documento: client.CGCENT,
-          dias: appliedDays,
-          token,
-          signal: controller.signal,
-        })
-        return [String(client.CODCLI), result?.vendedor ?? null]
-      } catch (err) {
-        if (err?.name === 'AbortError') return null
-        if (err?.isUnauthorized) unauthorized = true
-        return [String(client.CODCLI), null]
-      }
-    })).then((entries) => {
-      if (controller.signal.aborted) return
-      setSellersByClient((current) => ({
-        ...current,
-        ...Object.fromEntries(entries.filter(Boolean)),
-      }))
-      if (unauthorized) handleUnauthorized()
-    })
-
-    return () => controller.abort()
-  }, [appliedDays, clients, handleUnauthorized, token])
   /* oxlint-enable react/set-state-in-effect */
 
   const stats = useMemo(() => {
@@ -268,9 +225,8 @@ export function AtualizacoesPage() {
             const id = String(client.CODCLI)
             const isSelected = selected === id
             const purchase = client.ultima_compra
-            const seller = embeddedSeller(client) ?? sellersByClient[id]
+            const seller = embeddedSeller(client)
             const sellerName = seller?.nome ?? seller?.NOME
-            const sellerLoading = client.CGCENT && !embeddedSeller(client) && sellersByClient[id] === undefined
             return (
               <article className={`update-card ${emphasis}`} key={client.CODCLI}>
                 <div className="update-timeline" aria-hidden="true"><span>{absoluteIndex + 1}</span></div>
@@ -281,7 +237,7 @@ export function AtualizacoesPage() {
                       <h2>{client.CLIENTE || 'Cliente sem nome'}</h2>
                       <p>
                         Cliente #{client.CODCLI} · {client.MUNICENT || 'Cidade não informada'} · Vendedor:{' '}
-                        {sellerLoading ? 'carregando…' : (sellerName || 'não informado')}
+                        {sellerName || 'não informado'}
                       </p>
                     </div>
                     <div className="update-card-actions">
