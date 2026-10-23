@@ -1,12 +1,8 @@
 import { decodeToken } from '../lib/jwt'
-import { apiRequest } from './client'
+import { apiRequest, extractAccessToken, refreshAccessToken } from './client'
 
-function extractToken(data) {
-  if (!data) return null
-  if (typeof data === 'string') return data.trim() || null
-  return (
-    data.access_token ?? data.accessToken ?? data.token ?? data.access ?? data.id_token ?? null
-  )
+export function extractToken(data) {
+  return extractAccessToken(data)
 }
 
 /**
@@ -44,12 +40,22 @@ export async function login({ usuario, senha, signal }) {
   return { token, payload: decodeToken(token), raw: data }
 }
 
+/**
+ * POST /auth/refresh — renova o access token usando o cookie HttpOnly.
+ *
+ * Como o refresh token é rotativo, chamadas concorrentes compartilham a mesma
+ * Promise e nunca tentam reutilizar o mesmo cookie.
+ */
+export function refresh() {
+  return refreshAccessToken()
+}
+
 /** GET /auth/me — dados do usuário autenticado. */
 export function fetchMe(token, signal) {
   return apiRequest('/auth/me', { token, signal })
 }
 
-/** POST /auth/logout — encerra a sessão no servidor (best-effort). */
+/** POST /auth/logout — revoga a sessão identificada pelo cookie HttpOnly. */
 export function logout(token) {
   return apiRequest('/auth/logout', { method: 'POST', token })
 }

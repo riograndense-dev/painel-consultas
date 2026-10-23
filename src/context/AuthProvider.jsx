@@ -5,6 +5,8 @@ import { clearStoredToken, readToken, writeToken } from '../lib/storage'
 import { AuthContext } from './auth-context'
 
 const MAX_TIMEOUT = 2 ** 31 - 1
+const REFRESH_ADVANCE_MS = 30_000
+const REFRESH_RETRY_MS = 15_000
 
 function initialSession() {
   const stored = readToken()
@@ -13,12 +15,13 @@ function initialSession() {
     return { token: stored, payload, status: 'authenticated' }
   }
   if (stored) clearStoredToken()
-  return { token: null, payload: null, status: 'anonymous' }
+  // Mesmo sem access token local, o cookie HttpOnly pode restaurar a sessão.
+  return { token: null, payload: null, status: 'loading' }
 }
 
 /**
  * Centraliza autenticação: token persistido, claims decodificadas com
- * jwt-decode, expiração monitorada e logout automático.
+ * jwt-decode e renovação automática da sessão.
  */
 export function AuthProvider({ children }) {
   const [{ token, payload, status }, setSession] = useState(initialSession)
@@ -47,7 +50,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(
     async ({ notifyServer = true, message = null } = {}) => {
-      if (notifyServer && token) {
+      if (notifyServer) {
         try {
           await authApi.logout(token)
         } catch {
@@ -59,19 +62,83 @@ export function AuthProvider({ children }) {
     [token, clearSession],
   )
 
-  /** Logout automático quando o `exp` do JWT é atingido. */
+  /** Restaura uma sessão persistida somente no cookie ao abrir/recarregar a aplicação. */
+  useEffect(() => {
+    if (status !== 'loading') return undefined
+    let active = true
+
+    authApi
+      .refresh()
+      .then(({ token: nextToken, payload: nextPayload }) => {
+        if (!active) return
+        setSession({ token: nextToken, payload: nextPayload, status: 'authenticated' })
+      })
+      .catch(() => {
+        if (!active) return
+        clearStoredToken()
+        setSession({ token: null, payload: null, status: 'anonymous' })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [status])
+
+  useEffect(() => {
+    const handleTokenRefreshed = (event) => {
+      const nextToken = event?.detail?.token ?? readToken()
+      if (!nextToken) return
+
+      const nextPayload = decodeToken(nextToken)
+      setSession({ token: nextToken, payload: nextPayload, status: 'authenticated' })
+    }
+
+    const handleSessionCleared = () => {
+      clearSession('Sua sessão expirou ou foi encerrada. Faça login novamente.')
+    }
+
+    window.addEventListener('consulta.auth.refreshed', handleTokenRefreshed)
+    window.addEventListener('consulta.auth.cleared', handleSessionCleared)
+
+    return () => {
+      window.removeEventListener('consulta.auth.refreshed', handleTokenRefreshed)
+      window.removeEventListener('consulta.auth.cleared', handleSessionCleared)
+    }
+  }, [clearSession])
+
+  /** Renova o access token pouco antes do `exp`; falhas transitórias são tentadas novamente. */
   useEffect(() => {
     if (!token) return undefined
     const expiresAt = getTokenExpiration(payload)
     if (expiresAt === null) return undefined
 
-    const delay = Math.min(Math.max(expiresAt - Date.now(), 0), MAX_TIMEOUT)
-    const timer = setTimeout(() => {
-      signOut({ notifyServer: false, message: 'Sua sessão expirou. Faça login novamente.' })
-    }, delay)
+    let active = true
+    let timer
 
-    return () => clearTimeout(timer)
-  }, [token, payload, signOut])
+    const renew = async () => {
+      try {
+        await authApi.refresh()
+      } catch (error) {
+        if (!active) return
+        if (error?.isUnauthorized) {
+          clearSession('Sua sessão expirou ou foi encerrada. Faça login novamente.')
+          return
+        }
+        timer = setTimeout(renew, REFRESH_RETRY_MS)
+      }
+    }
+
+    const delay = Math.min(
+      Math.max(expiresAt - Date.now() - REFRESH_ADVANCE_MS, 0),
+      MAX_TIMEOUT,
+    )
+    timer = setTimeout(renew, delay)
+
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [token, payload, clearSession])
 
   /** Carrega /auth/me em segundo plano para enriquecer o cabeçalho. */
   useEffect(() => {
@@ -113,7 +180,7 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
       dismissNotice: () => setNotice(null),
-      /** Encerra a sessão local quando a API responde 401/403. */
+      /** Encerra a sessão local quando a API responde 401 após tentar o refresh. */
       handleUnauthorized: () =>
         clearSession('Sua sessão expirou ou foi encerrada. Faça login novamente.'),
     }),

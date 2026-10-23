@@ -30,9 +30,11 @@ Portal em React (JSX puro) que autentica na API descrita em `docs/openapi.json` 
 - **Tema escuro fixo** em verde floresta e latão, com layout responsivo para a carteira.
 - **Login** em `POST /auth/login` (fluxo OAuth2 password do `securityScheme OAuth2PasswordBearer`,
   `application/x-www-form-urlencoded`, com fallback automático para JSON).
+- **Refresh de sessão** em `POST /auth/refresh`: usa o cookie `HttpOnly` do refresh token, sincroniza o
+  novo `access_token` e reaproveita a mesma sessão sem exigir novo login.
 - **Sessão**: token persistido em `localStorage`, decodificado com `jwt-decode`, exibição das claims
-  (usuário, perfil, codusur, emissão/expiração), **logout automático no `exp`** do token e logout
-  forçado quando a API responde `401/403`.
+  (usuário, perfil, codusur, emissão/expiração), renovação preventiva antes do `exp` e automática em
+  respostas `401`, com restauração da sessão pelo cookie ao recarregar a aplicação.
 - **Consulta de situação**: formulário com máscara e validação de CPF/CNPJ, janela de dias
   (1–365, atalhos de 7 a 365 dias), tempo de resposta, status destacado, nome do cliente e
   visualização da **resposta JSON bruta**.
@@ -89,16 +91,19 @@ VITE_API_URL=http://localhost:8000
 ## Fluxo de autenticação
 
 1. `POST /auth/login` com `username`/`password` (form-urlencoded) → `access_token`.
-2. O token é decodificado por `jwt-decode` e guardado em `localStorage` (`consulta.auth.token`).
-3. Toda requisição protegida envia `Authorization: Bearer <token>`.
-4. `GET /auth/me` enriquece o cabeçalho (usuário/perfil); `401` encerra a sessão.
-5. `POST /auth/logout` é chamado ao sair (best-effort) e o token local é removido.
+2. A API grava o refresh token rotativo em cookie `HttpOnly`; todas as chamadas usam credenciais do navegador.
+3. O access token é decodificado por `jwt-decode` e guardado em `localStorage` (`consulta.auth.token`).
+4. Toda requisição protegida envia `Authorization: Bearer <token>`.
+5. Antes do `exp`, ou após um `401`, `POST /auth/refresh` rotaciona o cookie e atualiza o access token.
+6. Chamadas concorrentes compartilham uma única renovação para não reutilizar o refresh token rotativo.
+7. `POST /auth/logout` revoga a sessão persistida no servidor e o token local é removido.
 
 ## Endpoints utilizados
 
 | Método | Rota                 | Uso                                              |
 | ------ | -------------------- | ------------------------------------------------ |
 | POST   | `/auth/login`        | Autenticação (token)                             |
+| POST   | `/auth/refresh`      | Rotação do refresh token e renovação da sessão   |
 | GET    | `/auth/me`           | Dados do usuário autenticado                     |
 | POST   | `/auth/logout`       | Encerrar sessão no servidor                      |
 | GET    | `/clients/situacao`  | **Consulta principal** (`documento`, `dias`)     |
