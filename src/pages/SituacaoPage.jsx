@@ -297,6 +297,7 @@ export function SituacaoPage() {
                 <div className="wallet-detail" id={`client-details-${id}`} hidden={!isSelected}>
                     <div><small>Endereço</small><strong>{client.ENDERENT || details?.endereco || 'Não informado'}{client.MUNICENT ? `, ${client.MUNICENT}` : ''}</strong></div>
                     <div><small>Telefone</small><strong>{client.TELENT || details?.telefone || 'Não informado'}</strong></div>
+                    <div><small>Prazo de pagamento</small><strong>{client.PRAZO_PAGAMENTO || details?.prazo_pagamento || 'Não informado'}</strong></div>
                     <div><small>Vendedor</small><strong>{details?.vendedor?.nome ? `${details.vendedor.nome} · #${details.vendedor.codusur}` : busyDetails[id] ? 'Carregando detalhes…' : 'Não informado'}</strong></div>
                     <div><small>Última compra</small><strong>{details?.ultima_compra ? `${date(details.ultima_compra.data)} · ${currency(details.ultima_compra.valor_total)}` : busyDetails[id] ? 'Carregando detalhes…' : 'Não informado'}</strong></div>
                     {client.OBS ? <div className="wallet-observation"><small>Observações</small><strong>{client.OBS}</strong></div> : null}

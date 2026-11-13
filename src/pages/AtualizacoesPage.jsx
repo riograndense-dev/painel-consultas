@@ -254,6 +254,7 @@ export function AtualizacoesPage() {
                     <div><dt>Última compra válida</dt><dd>{formatDate(client.data_ultima_compra)}</dd></div>
                     <div><dt>Dias sem comprar</dt><dd>{client.dias_inativo} dias</dd></div>
                     <div><dt>Telefone</dt><dd>{client.TELENT || 'Não informado'}</dd></div>
+                    <div><dt>Prazo de pagamento</dt><dd>{client.PRAZO_PAGAMENTO || 'Não informado'}</dd></div>
                   </dl>
                   <section className="update-purchase" id={`update-purchase-${id}`} hidden={!isSelected}>
                     {purchase ? (
